@@ -227,7 +227,7 @@ def puxar_questoes(id, quantidade_questoes):
 
 def inserir_dados(response):
     # Cria uma conexão com o banco de dados SQLite
-    conn = sqlite3.connect('dados.db')
+    conn = sqlite3.connect('dados1.db')
 
     # Cria um cursor
     cursor = conn.cursor()
