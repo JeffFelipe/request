@@ -10,6 +10,7 @@ urls = list()
 contador = 0
 
 questao_salva = 0
+lista_com_questoes = []
 
 # Verificação de erro
 def verificar_request(response):
@@ -23,14 +24,18 @@ def verificar_request(response):
     if response.status_code != 200:
         print(f'Erro: {response.status_code}\n{response.text}')
         print('Aguarde 3 minutos para restaurar!')
+        save_responses_to_json(lista_com_questoes)
         sleep(180)
+        lista_com_questoes.clear()
         return True
     else:
         contador += 1
         if contador >= 100:
             print(f'Requisições: {contador}, esperar 180s')
             contador = 0
+            save_responses_to_json(lista_com_questoes)
             sleep(180)
+            lista_com_questoes.clear()
 
 
 # Restaurar questões
@@ -70,18 +75,8 @@ def restaurar(id, index_um, index_dois):
     if verificar_request(response):
         restaurar(id, index_um, index_dois)  # caso de erro novamente
     else:
-        response = json.loads(response.content)
-        inserir_dados(response)
-        print('Inseridas 200 questões')
-        """
-        for i in response['list']:
-            id_quest = int(i['idQuestao'])
-            quest = json.dumps(i)
-            inserir_dados(response)
-            questao_salva += 1
-            print(f"Questão: {i['idQuestao']} - Contagem:{questao_salva}")
-            # print(i['idQuestao']) # ID para pegar comentario dos professor
-        """
+        response = json.loads(response.content.decode())
+        lista_com_questoes.append(response)
 
 
 # Aplica Thread para puxar todos id de todos os cadernos
@@ -210,42 +205,19 @@ def puxar_questoes(id, quantidade_questoes):
         if verificar_request(response):
             restaurar(id, i[0], i[-1])
         else:
-            response = json.loads(response.content)
-            inserir_dados(response)
-            print('Inseridas 200 questões')
-            """
-            for i in response['list']:
-                id_quest = int(i['idQuestao'])
-                quest = json.dumps(i)
-                inserir_dados(id_quest, 'questao_completa', quest)
-                questao_salva += 1
-                print(f"Questão: {i['idQuestao']} - Contagem:{questao_salva}")
-                # print(i)  # Aqui temos as questões
-                # print(i['idQuestao']) # ID para pegar comentario dos professor
-            """
+            response = json.loads(response.content.decode())
+            lista_com_questoes.append(response)
 
 
-def inserir_dados(response):
-    # Cria uma conexão com o banco de dados SQLite
-    conn = sqlite3.connect('dados1.db')
 
-    # Cria um cursor
-    cursor = conn.cursor()
+def save_responses_to_json(response_list):
+    for item in response_list:
+        with open('questoes.json', 'w') as f:
+            json.dump(item, f, indent=4)
 
-    # Converte a lista de dicionários em uma lista de tuples
-    tuples = list(map(lambda x: (x['idQuestao'], json.dumps(x)), response['list']))
 
-    # Insere os registros na tabela do banco de dados
-    cursor.executemany('''
-    INSERT OR IGNORE  INTO banco_de_dados (id, questao_completa)
-    VALUES (?, ?)
-    ''', tuples)
 
-    # Salva as alterações no banco de dados
-    conn.commit()
 
-    # Fecha a conexão com o banco de dados
-    conn.close()
 
 
 
