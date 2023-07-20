@@ -1,45 +1,88 @@
 import requests
 import json
 from pprint import pprint
+from concurrent.futures import ThreadPoolExecutor
+from time import sleep
+import sqlite3
 
-produtos = ['KIKA ARROZ PARBOLIZADO KG', 'ACUCAR TRITURADO ALEGRE 1KG', 'LEITE EM PO TGUINHO INTEGRAL',
-            'CAFE SAO BRAZ 250GR FAMILIA ALMOFADA', 'ÓLEO DE SOJA LIZA 900ML', 'CAFÉ NODESTINO 250G',
-            'FLOCAO SAO BRAZ 500G']
-
-dados = []
-
-
-def adicionar_dados(novos_dados):
-    dados.extend(novos_dados)
+lista_id_cadernos, lista_quantidade_questao = list(), list()
+urls = list()
+questoes = []
 
 
-caminho_arquivo = "dados.json"
+def puxar_thread_caderno():
+    global urls
+    for i in puxar_dados_pasta():
+        urls.append(i)
 
-def salvar_arquivo():
-    with open(caminho_arquivo, "w") as arquivo:
-        json.dump(dados, arquivo)
+    with ThreadPoolExecutor(max_workers=100) as executor:
+        executor.map(puxar_id_caderno, urls)
 
 
-def verificar_paginas(produto):
+def puxar_thread_questoes():
+    global lista_id_cadernos, lista_quantidade_questao
+
+    with ThreadPoolExecutor(max_workers=100) as executor:
+        executor.map(puxar_questoes, lista_id_cadernos, lista_quantidade_questao)
+
+
+# Puxa id das pastas
+def puxar_dados_pasta():
+    lista_id = list()
     cookies = {
-        '_gid': 'GA1.4.1431529164.1689459720',
-        'cXwtVJnh0Hy': 'FECVGxe0e94vhoN',
-        'session': 'eyJjc3JmX3Rva2VuIjoiZDlmZDRjY2M5ZmRlZGE3MWFjODFmYTJkYzQ3Yzc2NmJkMjk5N2U5ZCJ9.ZLMeeA.97lregbt-B1UC5EU-0mXpdOL_wE',
-        '_gat_gtag_UA_139589857_1': '1',
-        '_ga': 'GA1.1.1308585336.1689459720',
-        'token': 'Q-udvXMhVfLl59UyWT0ZkdKIMhXoOqi9apfXHGBB6BfQ79afodwNVXEkZZ6GgAwAl4oK8WSUeVDpTFmCqovCDI_QdH8',
-        '_ga_DZ91BBFHNC': 'GS1.1.1689467242.2.1.1689467267.0.0.0',
-        '_ga_1S6B2LVB1Z': 'GS1.1.1689467242.2.1.1689467267.0.0.0',
+        'TecPermanecerLogado': 'MzM0NzAsYWZyYW5pb191bmlmZWlAeWFob28uY29tLmJyLCQyYSQxMiRxbWtBQUU3clVabm9xbzJkZkNqWFUud1J4SlRpVTU1MVN3UjZTSVdzM21XWHMvL1RSa1NibQ==',
     }
 
     headers = {
-        'authority': 'precodahora.pb.gov.br',
-        'accept': '*/*',
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0',
+        'Logado': 'true',
+        'Connection': 'keep-alive',
+        'Referer': 'https://www.tecconcursos.com.br/questoes/pastas'
+    }
+    while True:
+        response = requests.get('https://www.tecconcursos.com.br/api/pastas-cadernos/', cookies=cookies,
+                                headers=headers)
+        if response.status_code != 200:
+            print(f'Erro: {response.status_code}\n{response.text}')
+            sleep(180)
+        else:
+            break
+
+    response = json.loads(response.content)
+    for i in response['pastas']:  # percorre por cada pasta extraindo as informações
+        lista_id.append(i['id'])
+    return lista_id
+
+
+# Puxa o id de cada caderno
+def puxar_id_caderno(id):
+    global lista_id_cadernos, lista_quantidade_questao
+    cookies = {
+        '_fbp': 'fb.2.1689422657801.55388152',
+        '_gcl_au': '1.1.1995680729.1689422658',
+        '_gid': 'GA1.3.2080611932.1689594068',
+        'TecPermanecerLogado': 'MzM0NzAsYWZyYW5pb191bmlmZWlAeWFob28uY29tLmJyLCQyYSQxMiRxbWtBQUU3clVabm9xbzJkZkNqWFUud1J4SlRpVTU1MVN3UjZTSVdzM21XWHMvL1RSa1NibQ==',
+        'JSESSIONID': 'CE657E57A5093298CFADE4750A3E02F6',
+        'aws-waf-token': 'e5d6f015-ba09-4cc5-a682-629c3bda067f:EAoAi9wJJJQJAAAA:ujyP+s+nNpyVJR9C7Tf9K8fWAhCv+RPBmYUjN4vfUxwgkJBLfBUg4k1RFwVmcHrzXpokSCfsHtHr5g8K8HEkS3rb061Nss5mtn63toOIe8ilM70JNMDFOZpHwTo/H+nPLobCzh/FWFaGakL4DXTY0f5h7CC8G9zXMIPnPWeBD5I6VNB9btuhwghFxnb6q4mKKxwioNpyR5yEIpRLGyryFGFYlGDnY3s3kWPARrfr5VuAELTbhsyxp9//ExTeqKfMcv//wPQuWqY0',
+        '_gat_UA-32462178-1': '1',
+        '_uetsid': 'd1c3c760249611ee9240ab93a9b4b672',
+        '_uetvid': 'b9ba4db0230711ee8d0a9b95a1e8f42f',
+        'AWSALB': 'dpBBci7hK/mmx514WryyJyXlx2AklaDkHVgtPsyh1UTGrLvkKzhaTdqM1WcJtsVhhxLwotGKm4nKtGEQmis15CH4x7IOtwaPS3fJA8HL1Lb3T2DHq3nvp+JjOolk360usa4uZBH/PvhMQVHCRrvOyj+q8HCH3sTJTb+0mp8Ih5dKTxyCGMe7VwMalENe5w==',
+        'AWSALBCORS': 'dpBBci7hK/mmx514WryyJyXlx2AklaDkHVgtPsyh1UTGrLvkKzhaTdqM1WcJtsVhhxLwotGKm4nKtGEQmis15CH4x7IOtwaPS3fJA8HL1Lb3T2DHq3nvp+JjOolk360usa4uZBH/PvhMQVHCRrvOyj+q8HCH3sTJTb+0mp8Ih5dKTxyCGMe7VwMalENe5w==',
+        '_ga': 'GA1.1.796737532.1689422658',
+        '_ga_1LNYCM2MLB': 'GS1.1.1689815566.18.1.1689816958.8.0.0',
+        '_ga_X9T694QY0S': 'GS1.3.1689815584.17.1.1689816958.0.0.0',
+    }
+
+    headers = {
+        'authority': 'www.tecconcursos.com.br',
+        'accept': 'application/json, text/plain, * / *',
         'accept-language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-        'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        # 'cookie': '_gid=GA1.4.1431529164.1689459720; cXwtVJnh0Hy=FECVGxe0e94vhoN; session=eyJjc3JmX3Rva2VuIjoiZDlmZDRjY2M5ZmRlZGE3MWFjODFmYTJkYzQ3Yzc2NmJkMjk5N2U5ZCJ9.ZLMeeA.97lregbt-B1UC5EU-0mXpdOL_wE; _gat_gtag_UA_139589857_1=1; _ga=GA1.1.1308585336.1689459720; token=Q-udvXMhVfLl59UyWT0ZkdKIMhXoOqi9apfXHGBB6BfQ79afodwNVXEkZZ6GgAwAl4oK8WSUeVDpTFmCqovCDI_QdH8; _ga_DZ91BBFHNC=GS1.1.1689467242.2.1.1689467267.0.0.0; _ga_1S6B2LVB1Z=GS1.1.1689467242.2.1.1689467267.0.0.0',
-        'origin': 'https://precodahora.pb.gov.br',
-        'referer': 'https://precodahora.pb.gov.br/produtos/',
+        'cache-control': 'no-cache',
+        'if-modified-since': 'Mon, 26 Jul 1997 05:00:00 GMT',
+        'logado': 'true',
+        'pragma': 'no-cache',
+        'Referer': f'https://www.tecconcursos.com.br/questoes/pastas/{id}',
         'sec-ch-ua': '"Not.A/Brand";v="8", "Chromium";v="114", "Google Chrome";v="114"',
         'sec-ch-ua-mobile': '?0',
         'sec-ch-ua-platform': '"Windows"',
@@ -47,109 +90,118 @@ def verificar_paginas(produto):
         'sec-fetch-mode': 'cors',
         'sec-fetch-site': 'same-origin',
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
-        'x-authorization': 'eyJhbGciOiJSUzI1NiIsImtpZCI6IjE0ZWI4YTNiNjgzN2Y2MTU4ZWViNjA3NmU2YThjNDI4YTVmNjJhN2IiLCJ0eXAiOiJKV1QifQ.eyJwcm92aWRlcl9pZCI6ImFub255bW91cyIsImlzcyI6Imh0dHBzOi8vc2VjdXJldG9rZW4uZ29vZ2xlLmNvbS9wcmVjb2RhaG9yYS01ZjllNSIsImF1ZCI6InByZWNvZGFob3JhLTVmOWU1IiwiYXV0aF90aW1lIjoxNjg5NDU5NzE5LCJ1c2VyX2lkIjoib3c0aWg4SmRpSWJFOE1WcWV4ZWdLdkVVTkJpMSIsInN1YiI6Im93NGloOEpkaUliRThNVnFleGVnS3ZFVU5CaTEiLCJpYXQiOjE2ODk0NjcyNDMsImV4cCI6MTY4OTQ3MDg0MywiZmlyZWJhc2UiOnsiaWRlbnRpdGllcyI6e30sInNpZ25faW5fcHJvdmlkZXIiOiJhbm9ueW1vdXMifX0.TrfBpN9KLjnRf92nGrI0Ize3Ru0kJM_s2jndcvR6ktuuCdPSN5ofuvZmNVg2SGfI4gZUtqA4MwL-eUKBCCqP-twVYpI7T_no0sY7AMJiuGhc5QfmonPl7Miwib_a3SRJ0Euxzd3rm06H0QLgAEH_0CmmWQOS0LNSpW9krNjmsEqW1eW1YBSkCadoOGPGgXyCfGNJJynxpkNiOd_eLQYdVyKadQd4_2Xkjwj7W2BTEm7LXAT8hPbsbnc-4uir-TMH0UYDL0d0Pk2NBFsTDGEf5seMrfhsraIwGWdh3USku4cwFzn46WHXVm_dX12HteDjkeXR6XEegiAN_4KgXM6f1g',
-        'x-csrftoken': 'ImQ5ZmQ0Y2NjOWZkZWRhNzFhYzgxZmEyZGM0N2M3NjZiZDI5OTdlOWQi.ZLM5gw.zUAM7Hfv6Qcg2FceC6WbnPJv_Bg',
-        'x-requested-with': 'XMLHttpRequest',
     }
+    while True:
+        response = requests.get(
+            f'https://www.tecconcursos.com.br/api/pastas-cadernos/{id}/itens', cookies=cookies, headers=headers
+        )
+        if response.status_code != 200:
+            print(f'Erro: {response.status_code}\n{response.text}')
+            sleep(180)
+        else:
+            break
 
-    data = {
-        'termo': produto,
-        'gtin': '',
-        'cnpj': '',
-        'horas': '72',
-        'anp': '',
-        'municipio': '',
-        'latitude': '-7.137405',
-        'longitude': '-34.8484777',
-        'raio': '15',
-        'localizacao': 'Centro de JOÃO PESSOA',
-        'precomax': '0',
-        'precomin': '0',
-        'pagina': '1',
-        'ordenar': 'preco.asc',
-        'categorias': '',
-        'processo': 'carregar',
-        'totalCategorias': '',
-        'totalRegistros': '0',
-        'totalPaginas': '1',
-        'pageview': 'lista',
-    }
-
-    response = requests.post('https://precodahora.pb.gov.br/produtos/', cookies=cookies, headers=headers, data=data)
-    print(response.status_code)
     response = json.loads(response.content)
-
-    print(response.keys())
-    try:
-        total_paginas = response['totalPaginas']
-        for i in range(1, total_paginas + 1):
-            extrair_listas_de_produtos(produto, i)
-    except KeyError:
-        pprint(response)
+    for i in response['itens']:
+        lista_id_cadernos.append(i['id'])
+        lista_quantidade_questao.append(i['quantidadeItens'])
 
 
-def extrair_listas_de_produtos(produto, pagina):
-    cookies = {
-        '_gid': 'GA1.4.1431529164.1689459720',
-        'cXwtVJnh0Hy': 'FECVGxe0e94vhoN',
-        'session': 'eyJjc3JmX3Rva2VuIjoiZDlmZDRjY2M5ZmRlZGE3MWFjODFmYTJkYzQ3Yzc2NmJkMjk5N2U5ZCJ9.ZLMeeA.97lregbt-B1UC5EU-0mXpdOL_wE',
-        '_gat_gtag_UA_139589857_1': '1',
-        '_ga': 'GA1.1.1308585336.1689459720',
-        'token': 'Ct4uXOgVeDbYWe-LP9ZZd_ug06vGx2sEGznFPKhT2nn6N0Y79XkUlZCNIJ7mcEY7twTdUtBSDLj7dk4fMg3Uwez65Zc',
-        '_ga_DZ91BBFHNC': 'GS1.1.1689459719.1.1.1689463437.0.0.0',
-        '_ga_1S6B2LVB1Z': 'GS1.1.1689459719.1.1.1689463437.0.0.0',
-    }
+# Puxa as questões
+def puxar_questoes(id, quantidade_questoes):
+    global lista_id_cadernos, questoes
+    n = quantidade_questoes
+    # Divido os numeros, para obter as questões iniciais e finais
+    tamanho = 200
+    num_listas, resto = divmod(n, tamanho)
+    listas = []
+    for i in range(num_listas):
+        inicio = i * tamanho + 1
+        fim = inicio + tamanho - 1
+        lista = list(range(inicio, fim + 1))
+        listas.append(lista)
+    if resto > 0:
+        inicio = num_listas * tamanho + 1
+        fim = inicio + resto - 1
+        lista = list(range(inicio, fim + 1))
+        listas.append(lista)
+    # dentro do for percorro as requisições usando os numeros de questões
+    for i in listas:
+        cookies = {
+            '_fbp': 'fb.2.1689422657801.55388152',
+            '_gcl_au': '1.1.1995680729.1689422658',
+            '_gid': 'GA1.3.2080611932.1689594068',
+            'TecPermanecerLogado': 'MzM0NzAsYWZyYW5pb191bmlmZWlAeWFob28uY29tLmJyLCQyYSQxMiRxbWtBQUU3clVabm9xbzJkZkNqWFUud1J4SlRpVTU1MVN3UjZTSVdzM21XWHMvL1RSa1NibQ==',
+            'JSESSIONID': 'CE657E57A5093298CFADE4750A3E02F6',
+            'aws-waf-token': 'e5d6f015-ba09-4cc5-a682-629c3bda067f:EAoAto8JHIEAAAAA:c9vZfwL9dOaTrbpRY/FaGX5IPgkY3xklXa2v1PCJeYVtKgffDJum/Ue7Vfg1GCEbnZBOmF5tpZXnE/Ua1lPxACIs2i/GWb6FilQUq9tjKaj9kxTwX89vGL8QLaP2tt0wmFJSe1xCotzNklxoTMnkLyXdUui5k6hDccALEMnw+09Wm/zo7aa7+Ajv2yS4pMT8vjV5c/p+YCSv9eNz6cqYn8/2vAfn9tPiWGxNl/htTEIarB3+ZypnYgri1WRrGyfCO107Z7QiIv+C',
+            '_gat_UA-32462178-1': '1',
+            '_uetsid': 'd1c3c760249611ee9240ab93a9b4b672',
+            '_uetvid': 'b9ba4db0230711ee8d0a9b95a1e8f42f',
+            '_ga_X9T694QY0S': 'GS1.3.1689815584.17.1.1689815978.0.0.0',
+            'AWSALB': 'FQ721DoAi5/MR/iJF9OrDvEbqhcEqWzTy3MMO5yzU6CbaMs86ul3g0bXdn2lj8rhckz7ORU/vj72naiqMbUSDaBc+Mfele1RDCMAHXf65nxZ3CTK6bPqn5WvnMprSTIAx06j+lGQnRdkod75JCdJTg5H5zBMwP7CM1b+vK9Ka2raRSD3MVL3VqGj6YSuXA==',
+            'AWSALBCORS': 'FQ721DoAi5/MR/iJF9OrDvEbqhcEqWzTy3MMO5yzU6CbaMs86ul3g0bXdn2lj8rhckz7ORU/vj72naiqMbUSDaBc+Mfele1RDCMAHXf65nxZ3CTK6bPqn5WvnMprSTIAx06j+lGQnRdkod75JCdJTg5H5zBMwP7CM1b+vK9Ka2raRSD3MVL3VqGj6YSuXA==',
+            '_ga': 'GA1.1.796737532.1689422658',
+            '_ga_1LNYCM2MLB': 'GS1.1.1689815566.18.1.1689815988.45.0.0',
+        }
 
-    headers = {
-        'authority': 'precodahora.pb.gov.br',
-        'accept': '*/*',
-        'accept-language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-        'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        'origin': 'https://precodahora.pb.gov.br',
-        'referer': 'https://precodahora.pb.gov.br/produtos/',
-        'sec-ch-ua': '"Not.A/Brand";v="8", "Chromium";v="114", "Google Chrome";v="114"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Windows"',
-        'sec-fetch-dest': 'empty',
-        'sec-fetch-mode': 'cors',
-        'sec-fetch-site': 'same-origin',
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
-        'x-authorization': 'eyJhbGciOiJSUzI1NiIsImtpZCI6IjE0ZWI4YTNiNjgzN2Y2MTU4ZWViNjA3NmU2YThjNDI4YTVmNjJhN2IiLCJ0eXAiOiJKV1QifQ.eyJwcm92aWRlcl9pZCI6ImFub255bW91cyIsImlzcyI6Imh0dHBzOi8vc2VjdXJldG9rZW4uZ29vZ2xlLmNvbS9wcmVjb2RhaG9yYS01ZjllNSIsImF1ZCI6InByZWNvZGFob3JhLTVmOWU1IiwiYXV0aF90aW1lIjoxNjg5NDU5NzE5LCJ1c2VyX2lkIjoib3c0aWg4SmRpSWJFOE1WcWV4ZWdLdkVVTkJpMSIsInN1YiI6Im93NGloOEpkaUliRThNVnFleGVnS3ZFVU5CaTEiLCJpYXQiOjE2ODk0NjM0MDAsImV4cCI6MTY4OTQ2NzAwMCwiZmlyZWJhc2UiOnsiaWRlbnRpdGllcyI6e30sInNpZ25faW5fcHJvdmlkZXIiOiJhbm9ueW1vdXMifX0.ZysM1MyaQXfO1dmnkqfO3tZmHXioqYamtq5QnEXhya35HST051vTJHypUdtMdH00jcc3r1R7hNzI9AviTMjZ-idfHRJnuXeUHNmqcUlpRKJuc3-emPfyplNBoNZDn7ukgQA1-qeSRD9OpdH3K4Ts9FO82YOxm8nPvpQgmLBqUR3ShsAaLpBkV5hAfSgj5LPlvuoUpFuvndzXu8o9peZ7VHtJea2c4RdFf4mrtkHRA2XFr9JBq1WM5LlHaT19zLSD8QvTSj0qauFm70mfqAdCjcT8a05H8yJ35ov0NPzrfMZpb_WXU_OYRAh9q31sX2ZZEvVUfPPUdioArSYjFhvctQ',
-        'x-csrftoken': 'ImQ5ZmQ0Y2NjOWZkZWRhNzFhYzgxZmEyZGM0N2M3NjZiZDI5OTdlOWQi.ZLMqjQ.k38JEGJqLGazh3b1lDMnlWaCcTk',
-        'x-requested-with': 'XMLHttpRequest',
-    }
+        headers = {
+            'authority': 'www.tecconcursos.com.br', 'accept': 'application/json, text/javascript, */*; q=0.01',
+            'accept-language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+            'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'origin': 'https://www.tecconcursos.com.br',
+            'referer': 'https://www.tecconcursos.com.br/questoes/cadernos/experimental/32374710/imprimir',
+            'sec-ch-ua': '"Not.A/Brand";v="8", "Chromium";v="114", "Google Chrome";v="114"', 'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"Windows"',
+            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
+            'x-requested-with': 'XMLHttpRequest', }
 
-    data = {
-        'termo': produto,
-        'gtin': '',
-        'cnpj': '',
-        'horas': '72',
-        'anp': '',
-        'municipio': '',
-        'latitude': '-7.137405',
-        'longitude': '-34.8484777',
-        'raio': '15',
-        'localizacao': 'Centro de JOÃO PESSOA',
-        'precomax': '0',
-        'precomin': '0',
-        'pagina': pagina,
-        'ordenar': 'preco.asc',
-        'categorias': '',
-        'processo': 'carregar',
-        'totalCategorias': '',
-        'totalRegistros': '0',
-        'totalPaginas': '1',
-        'pageview': 'lista',
-    }
+        data = {
+            'configuracoes.idCadernoQuestoes': f'{id}', 'configuracoes.idTeoriaModulo': '',
+            'configuracoes.idTeoriaAssunto': '',
+            'configuracoes.questaoInicial': f'{i[0]}', 'configuracoes.numeroQuestoes': f'{i[-1]}',
+            'configuracoes.removerQuestoes': 'NENHUMA', }
+        while True:
+            response = requests.post(
+                f'https://www.tecconcursos.com.br/questoes/cadernos/experimental/{id}/ajaxCarregarQuestoesImpressao',
+                cookies=cookies, headers=headers, data=data)
+            if response.status_code != 200:
+                print(f'Erro: {response.status_code}\n{response.text}')
+                sleep(180)
+            else:
+                break
+        response = json.loads(response.content)
+        for i in response['list']:
+            questoes.append(i)
 
-    response = requests.post('https://precodahora.pb.gov.br/produtos/', cookies=cookies, headers=headers, data=data)
-    response = json.loads(response.content)
-
-    pprint(response)
-
-    adicionar_dados(response)
-    salvar_arquivo()
+        sleep(180)
 
 
-for item in produtos:
-    verificar_paginas(item)
+puxar_thread_caderno()
+sleep(180)  # aguarda 180 segundo, zerando o tempo dos works
+print('aguardando 180 segundos iniciais!')
+puxar_thread_questoes()
+
+
+def inserir_dados(questoes):
+    # Cria uma conexão com o banco de dados SQLite
+    conn = sqlite3.connect('dados.db')
+
+    # Cria um cursor
+    cursor = conn.cursor()
+
+    # Insere os registros da lista `questoes` na tabela `banco_de_dados`, mesmo se o ID já existir
+    cursor.executemany('''
+        INSERT OR IGNORE INTO banco_de_dados (id, questao_completa)
+        VALUES (?, ?)
+        ''', [(item['idQuestao'], json.dumps(item)) for item in questoes])
+
+    # Salva as alterações no banco de dados
+    conn.commit()
+
+    # Fecha a conexão com o banco de dados
+    conn.close()
+
+
+print('inserindo questoes')
+inserir_dados(questoes)
+print(f'Questoes inseridas: {len(questoes)}')
